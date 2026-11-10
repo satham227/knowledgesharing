@@ -1,0 +1,394 @@
+<main class="lab-shell">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Real-Time Whiteboard Lab home"
+      ><span class="brand-mark">WB</span><span>Real-Time <b>Whiteboard Lab</b></span></a
+    >
+    <div class="room-controls">
+      <label class="field-label" for="room">ROOM</label>
+      <input
+        id="room"
+        [value]="roomId"
+        (input)="roomId = $any($event.target).value"
+        aria-label="Room ID"
+      />
+      <label class="field-label" for="name">AS</label>
+      <input
+        id="name"
+        [value]="name"
+        (input)="name = $any($event.target).value"
+        aria-label="Your name"
+      />
+      @if (joined) {
+        <button class="join-button leave" (click)="leave()">Leave</button>
+      } @else {
+        <button class="join-button create-room" (click)="createRoom()">Create room</button>
+        <button class="join-button" (click)="connect()">Join room <span>↗</span></button>
+      }
+    </div>
+    <div class="top-status">
+      <span class="status-light" [class.live]="status === 'connected'"></span
+      ><span>{{
+        status === 'connected' ? 'Connected' : status === 'reconnecting' ? 'Reconnecting' : status
+      }}</span
+      ><span class="status-divider"></span
+      ><span class="presence-count">{{ connectedUsers.length }} online</span>
+    </div>
+  </header>
+
+  <section class="modebar" aria-label="Transport mode">
+    <div class="mode-label">
+      <span class="eyebrow">TRANSPORT LAB</span><span>Choose a wire</span>
+    </div>
+    <div class="mode-switch">
+      <button [class.active]="mode === 'websocket'" (click)="setMode('websocket')">
+        <span class="mode-dot tcp"></span>WebSocket <small>TCP · reliable / ordered</small>
+      </button>
+      <button [class.active]="mode === 'webtransport'" (click)="setMode('webtransport')">
+        <span class="mode-dot quic"></span>WebTransport <small>HTTP/3 · QUIC</small>
+      </button>
+    </div>
+    <div class="mode-caption">
+      {{
+        mode === 'websocket'
+          ? 'One reliable ordered stream'
+          : 'Reliable commits + lossy cursor datagrams'
+      }}
+    </div>
+  </section>
+
+  <section class="work-area">
+    <aside class="toolrail" aria-label="Whiteboard tools">
+      <div class="tool-group">
+        <button
+          title="Select and move notes"
+          aria-label="Select"
+          [class.selected]="tool === 'select'"
+          (click)="setTool('select')"
+        >
+          <span>↖</span>
+        </button>
+        <button
+          title="Pencil"
+          aria-label="Pencil"
+          [class.selected]="tool === 'pencil'"
+          (click)="setTool('pencil')"
+        >
+          <span>✎</span>
+        </button>
+        <button
+          title="Eraser"
+          aria-label="Eraser"
+          [class.selected]="tool === 'eraser'"
+          (click)="setTool('eraser')"
+        >
+          <span>▱</span>
+        </button>
+      </div>
+      <div class="tool-group">
+        <button
+          title="Rectangle"
+          aria-label="Rectangle"
+          [class.selected]="tool === 'rectangle'"
+          (click)="setTool('rectangle')"
+        >
+          <span>□</span>
+        </button>
+        <button
+          title="Circle"
+          aria-label="Circle"
+          [class.selected]="tool === 'circle'"
+          (click)="setTool('circle')"
+        >
+          <span>○</span>
+        </button>
+        <button
+          title="Line"
+          aria-label="Line"
+          [class.selected]="tool === 'line'"
+          (click)="setTool('line')"
+        >
+          <span>／</span>
+        </button>
+        <button
+          title="Arrow"
+          aria-label="Arrow"
+          [class.selected]="tool === 'arrow'"
+          (click)="setTool('arrow')"
+        >
+          <span>↗</span>
+        </button>
+      </div>
+      <div class="tool-group">
+        <button
+          title="Sticky note"
+          aria-label="Sticky note"
+          [class.selected]="tool === 'sticky'"
+          (click)="setTool('sticky')"
+        >
+          <span class="sticky-icon"></span>
+        </button>
+        <button
+          title="Text"
+          aria-label="Text"
+          [class.selected]="tool === 'text'"
+          (click)="setTool('text')"
+        >
+          <span>T</span>
+        </button>
+      </div>
+      <div class="tool-group tool-actions">
+        <button title="Undo" aria-label="Undo" (click)="undo()"><span>↶</span></button
+        ><button title="Redo" aria-label="Redo" (click)="redo()"><span>↷</span></button>
+      </div>
+      <div class="color-wrap">
+        <input
+          type="color"
+          [value]="color"
+          (input)="color = $any($event.target).value"
+          aria-label="Drawing color"
+          title="Drawing color"
+        />
+      </div>
+      <div class="tool-bottom">
+        <button title="Clear board" aria-label="Clear board" (click)="clearBoard()">
+          <span>⌫</span></button
+        ><button
+          title="Toggle grid"
+          aria-label="Toggle grid"
+          [class.selected]="grid"
+          (click)="grid = !grid; redraw()"
+        >
+          <span>▦</span>
+        </button>
+      </div>
+    </aside>
+
+    <section class="board-column">
+      <div class="board-meta">
+        <span><i class="live-dot"></i>{{ roomId || 'No room' }}</span
+        ><span class="object-count"
+          >{{ objects.length }} objects <b>·</b>
+          {{ metrics.syncStatus === 'synced' ? 'state synced' : 'waiting for sync' }}</span
+        >
+      </div>
+      <div class="board-frame" [class.not-joined]="!joined">
+        <canvas
+          #board
+          aria-label="Collaborative whiteboard"
+          (pointerdown)="pointerDownOnBoard($event)"
+          (pointermove)="pointerMoveOnBoard($event)"
+          (pointerup)="pointerUpOnBoard()"
+          (pointercancel)="pointerUpOnBoard()"
+          (dblclick)="editStickyAt($event)"
+        ></canvas>
+        @for (cursor of cursors; track cursor.userId) {
+          <div
+            class="remote-cursor"
+            [style.left.%]="cursor.x * 100"
+            [style.top.%]="cursor.y * 100"
+            [style.--cursor-color]="cursor.color"
+          >
+            <span class="cursor-arrow">↖</span><span class="cursor-name">{{ cursor.name }}</span>
+          </div>
+        }
+        @if (!joined) {
+          <div class="join-overlay">
+            <span class="overlay-mark">+</span><b>Join a room to start collaborating</b
+            ><span>Share the room ID with your team to open this board together.</span>
+          </div>
+        }
+        @if (status === 'error') {
+          <div class="board-alert">
+            {{ detail || 'Transport unavailable. Check the server and browser support.' }}
+          </div>
+        }
+      </div>
+      <div class="board-footer">
+        <span>Shared canvas</span
+        ><span>CANVAS 01 <i>·</i> {{ mode === 'websocket' ? 'TCP' : 'QUIC' }}</span>
+      </div>
+    </section>
+
+    <aside class="presence-panel">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow">ROOM</span>
+          <h2>
+            People <em>{{ connectedUsers.length }}</em>
+          </h2>
+        </div>
+        <button class="icon-action" title="Copy room ID" (click)="copyRoomId()">⧉</button>
+      </div>
+      <div class="presence-list">
+        @for (user of connectedUsers; track user.id) {
+          <div class="person-row">
+            <span class="avatar" [style.background]="user.color">{{
+              user.name.slice(0, 1).toUpperCase()
+            }}</span
+            ><span class="person-name"
+              >{{ user.name }}<small>{{ user.id === userId ? 'You' : 'Collaborator' }}</small></span
+            ><i class="person-live"></i>
+          </div>
+        } @empty {
+          <div class="empty-presence">No one here yet</div>
+        }
+      </div>
+      <div class="presence-bottom">
+        <span class="share-glyph">↗</span
+        ><span
+          >Invite teammates using room ID<br /><b>{{ roomId }}</b></span
+        >
+      </div>
+    </aside>
+  </section>
+
+  <section class="monitor" aria-label="Performance monitoring">
+    <div class="monitor-head">
+      <div>
+        <span class="eyebrow">LIVE TELEMETRY</span>
+        <h2>Transport monitor</h2>
+      </div>
+      <button
+        class="simulation-toggle"
+        [class.on]="simulationOpen"
+        (click)="simulationOpen = !simulationOpen"
+      >
+        <span>⌁</span>Network simulation <i>{{ simulation.enabled ? 'ON' : 'OFF' }}</i>
+      </button>
+    </div>
+    <div class="metric-grid">
+      <div class="metric">
+        <span>ACTIVE TRANSPORT</span><b>{{ mode === 'websocket' ? 'WebSocket' : 'WebTransport' }}</b
+        ><small>{{ mode === 'websocket' ? 'TCP · ordered' : 'QUIC · streams + datagrams' }}</small>
+      </div>
+      <div class="metric">
+        <span>CONNECT TIME</span
+        ><b>{{
+          metrics.establishmentMs === null
+            ? '—'
+            : (metrics.establishmentMs | number: '1.0-0') + ' ms'
+        }}</b
+        ><small>Measured at client</small>
+      </div>
+      <div class="metric">
+        <span>ROUND-TRIP TIME</span
+        ><b>{{ metrics.rttMs === null ? '—' : (metrics.rttMs | number: '1.0-0') + ' ms' }}</b
+        ><small>PING / PONG · full RTT</small>
+      </div>
+      <div class="metric">
+        <span>MESSAGES / SEC</span><b>{{ metrics.messagesPerSecond }}</b
+        ><small>{{ metrics.messagesSent }} sent · {{ metrics.messagesReceived }} received</small>
+      </div>
+      <div class="metric">
+        <span>BYTES</span
+        ><b
+          >{{ metrics.bytesSent | number }} <small>↑</small> / {{ metrics.bytesReceived | number }}
+          <small>↓</small></b
+        ><small>Cumulative wire payload</small>
+      </div>
+      <div class="metric">
+        <span>DROPPED DATAGRAMS</span><b>{{ metrics.droppedDatagrams }}</b
+        ><small>{{
+          mode === 'webtransport' ? 'Local app drops + oversize' : 'Not applicable to TCP'
+        }}</small>
+      </div>
+      <div class="metric">
+        <span>RECONNECTS</span><b>{{ metrics.reconnects }}</b
+        ><small>Automatic retry attempts</small>
+      </div>
+      <div class="metric">
+        <span>SERVER PROCESSING</span
+        ><b>{{
+          metrics.serverProcessingMs === null
+            ? '—'
+            : (metrics.serverProcessingMs | number: '1.2-2') + ' ms'
+        }}</b
+        ><small>Measured at PONG handler</small>
+      </div>
+    </div>
+    <div class="delivery-legend">
+      <span
+        ><i class="legend-solid"></i>Reliable delivery
+        <b>{{
+          mode === 'websocket' ? 'WebSocket ordered stream' : 'WebTransport bidirectional stream'
+        }}</b
+        ><small
+          >{{ metrics.reliableMessagesSent }} sent /
+          {{ metrics.reliableMessagesReceived }} received</small
+        ></span
+      ><span
+        ><i class="legend-dash"></i>Transient delivery
+        <b>{{
+          mode === 'webtransport' ? 'QUIC datagrams · cursor / preview' : 'WebSocket messages'
+        }}</b
+        ><small
+          >{{ metrics.datagramMessagesSent }} sent /
+          {{ metrics.datagramMessagesReceived }} received</small
+        ></span
+      ><span class="sync-indicator"
+        ><i [class.synced]="metrics.syncStatus === 'synced'"></i
+        >{{
+          metrics.syncStatus === 'synced' ? 'Board synchronized' : 'Awaiting board snapshot'
+        }}</span
+      >
+    </div>
+    @if (simulationOpen) {
+      <div class="simulation-panel">
+        <div class="simulation-title">
+          <div>
+            <span class="eyebrow">DEVELOPER CONTROLS</span><b>Application-level simulation</b>
+          </div>
+          <label class="switch"
+            ><input
+              type="checkbox"
+              [checked]="simulation.enabled"
+              (change)="setSimulationValue('enabled', $any($event.target).checked)" /><span></span
+          ></label>
+        </div>
+        <div class="simulation-controls">
+          <label
+            >Added delay <b>{{ simulation.delayMs }} ms</b
+            ><input
+              type="range"
+              min="0"
+              max="1000"
+              step="25"
+              [value]="simulation.delayMs"
+              (input)="setSimulationValue('delayMs', +$any($event.target).value)" /></label
+          ><label
+            >Cursor sample <b>{{ simulation.cursorRate }} / sec</b
+            ><input
+              type="range"
+              min="1"
+              max="60"
+              [value]="simulation.cursorRate"
+              (input)="setSimulationValue('cursorRate', +$any($event.target).value)" /></label
+          ><label
+            >Datagram app-drop <b>{{ simulation.dropPercent }}%</b
+            ><input
+              type="range"
+              min="0"
+              max="50"
+              [value]="simulation.dropPercent"
+              (input)="setSimulationValue('dropPercent', +$any($event.target).value)" /></label
+          ><label class="check-setting"
+            ><input
+              type="checkbox"
+              [checked]="simulation.slowBulk"
+              (change)="setSimulationValue('slowBulk', $any($event.target).checked)"
+            />Simulate slow bulk workload</label
+          >
+        </div>
+        <p>
+          These controls delay or drop application messages only; they do not simulate TCP or QUIC
+          packet loss. Use Linux <code>tc netem</code> (or an equivalent network impairment tool) on
+          a controlled test network for packet-level comparisons.
+        </p>
+      </div>
+    }
+  </section>
+  <footer class="app-footer">
+    <span>REAL-TIME WHITEBOARD LAB <i>·</i> INTERNAL KNOWLEDGE SHARE</span
+    ><span>State is in-memory and resets when the server restarts.</span>
+  </footer>
+</main>

@@ -1,0 +1,61 @@
+{
+  "name": "realtime-whiteboard-lab",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "node --import tsx --test backend/src/rooms/room-manager.test.ts backend/src/transports/webtransport/framing.test.ts",
+    "test:e2e": "playwright test",
+    "server": "tsx backend/src/server.ts",
+    "dev": "concurrently -k \"npm:server\" \"npm:start\""
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/common": "^20.2.0",
+    "@angular/compiler": "^20.2.0",
+    "@angular/core": "^20.2.0",
+    "@angular/forms": "^20.2.0",
+    "@angular/platform-browser": "^20.2.0",
+    "@angular/router": "^20.2.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.0",
+    "@fails-components/webtransport": "^1.6.11",
+    "@fails-components/webtransport-transport-http3-quiche": "^1.6.11",
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@angular/build": "^20.2.1",
+    "@angular/cli": "^20.2.1",
+    "@angular/compiler-cli": "^20.2.0",
+    "@types/jasmine": "~5.1.0",
+    "jasmine-core": "~5.9.0",
+    "karma": "~6.4.0",
+    "karma-chrome-launcher": "~3.2.0",
+    "karma-coverage": "~2.2.0",
+    "karma-jasmine": "~5.1.0",
+    "karma-jasmine-html-reporter": "~2.1.0",
+    "typescript": "~5.9.2",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.30",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.0",
+    "tsx": "^4.20.3",
+    "@playwright/test": "^1.55.0"
+  }
+}
